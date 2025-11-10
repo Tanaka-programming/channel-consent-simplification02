@@ -1,0 +1,67 @@
+<!-- index.html (Pattern 2: オンデマンド同意) -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pattern 2: オンデマンド同意</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 16px; }
+    button { padding: 10px 16px; border-radius: 10px; border: 1px solid #ddd; margin-right: 8px; }
+    .card { border: 1px solid #eee; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .hint { color:#444; }
+  </style>
+</head>
+<body>
+  <h1>Pattern 2: オンデマンド同意</h1>
+  <div class="card">
+    <p>最初は <code>openid</code> のみで動作。機能利用時に必要な権限だけ要求します。</p>
+    <button id="btnNeedProfile">プロフィールを表示（profile 権限要求）</button>
+    <button id="btnNeedChat">メッセージ送信（chat_message.write 権限要求）</button>
+    <pre id="out" class="hint"></pre>
+  </div>
+  <script>
+    const LIFF_ID = "2008457198-pO9z6Zjm"; // 差し替え
+
+    async function ensureLogin() {
+      if (!liff.isLoggedIn()) { await liff.login(); return false; }
+      return true;
+    }
+
+    async function ensureScopes(scopes) {
+      let needRequest = false;
+      for (const s of scopes) {
+        const st = await liff.permission.query(s);
+        if (st.state === "prompt") { needRequest = true; break; }
+      }
+      if (needRequest) await liff.permission.requestAll(); // まとめて要求
+    }
+
+    async function onNeedProfile() {
+      await ensureScopes(["profile"]); // 必要ならアクセス許可要求画面
+      const p = await liff.getProfile();
+      out(JSON.stringify(p, null, 2));
+    }
+
+    async function onNeedChat() {
+      await ensureScopes(["chat_message.write"]);
+      await liff.sendMessages([{ type: "text", text: "Hello from LIFF sample!" }]);
+      out("メッセージ送信しました。");
+    }
+
+    function out(msg) {
+      document.getElementById("out").textContent = msg;
+    }
+
+    async function main() {
+      await liff.init({ liffId: LIFF_ID });
+      const ok = await ensureLogin(); if (!ok) return;
+      out("ログイン完了。必要なときに権限を求めます。");
+      document.getElementById("btnNeedProfile").onclick = onNeedProfile;
+      document.getElementById("btnNeedChat").onclick = onNeedChat;
+    }
+    main().catch(e => out("初期化エラー: " + e.message));
+  </script>
+</body>
+</html>
