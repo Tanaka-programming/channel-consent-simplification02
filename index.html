@@ -1,4 +1,4 @@
-<!-- index.html (Pattern 2: オンデマンド同意) -->
+<!-- index.html (Pattern 2: オンデマンド同意 + Permissions API 位置情報テスト) -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -8,9 +8,9 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     body { font-family: system-ui, sans-serif; padding: 16px; }
-    button { padding: 10px 16px; border-radius: 10px; border: 1px solid #ddd; margin-right: 8px; }
+    button { padding: 10px 16px; border-radius: 10px; border: 1px solid #ddd; margin-right: 8px; margin-bottom: 8px; }
     .card { border: 1px solid #eee; border-radius: 12px; padding: 16px; margin: 12px 0; }
-    .hint { color:#444; }
+    .hint { color:#444; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -19,13 +19,21 @@
     <p>最初は <code>openid</code> のみで動作。機能利用時に必要な権限だけ要求します。</p>
     <button id="btnNeedProfile">プロフィールを表示（profile 権限要求）</button>
     <button id="btnNeedChat">メッセージ送信（chat_message.write 権限要求）</button>
+
+    <!-- ★ 追加: Permissions API + Geolocation テストボタン -->
+    <button id="btnCheckGeo">位置情報を確認（Permissions API + Geolocation）</button>
+
     <pre id="out" class="hint"></pre>
   </div>
+
   <script>
     const LIFF_ID = "2008457198-pO9z6Zjm"; // 差し替え
 
     async function ensureLogin() {
-      if (!liff.isLoggedIn()) { await liff.login(); return false; }
+      if (!liff.isLoggedIn()) {
+        await liff.login();
+        return false;
+      }
       return true;
     }
 
@@ -33,9 +41,14 @@
       let needRequest = false;
       for (const s of scopes) {
         const st = await liff.permission.query(s);
-        if (st.state === "prompt") { needRequest = true; break; }
+        if (st.state === "prompt") {
+          needRequest = true;
+          break;
+        }
       }
-      if (needRequest) await liff.permission.requestAll(); // まとめて要求
+      if (needRequest) {
+        await liff.permission.requestAll(); // まとめて要求
+      }
     }
 
     async function onNeedProfile() {
@@ -50,17 +63,75 @@
       out("メッセージ送信しました。");
     }
 
+    // ★ 追加: 位置情報取得処理（Geolocation API）
+    function getCurrentPositionWithGeolocationAPI() {
+      if (!("geolocation" in navigator)) {
+        out("この環境は Geolocation API に対応していません。");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const data = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy
+          };
+          out("位置情報取得成功:\n" + JSON.stringify(data, null, 2));
+        },
+        (err) => {
+          out("位置情報取得失敗:\ncode=" + err.code + ", message=" + err.message);
+        }
+      );
+    }
+
+    // ★ 追加: Permissions API を使った geolocation の状態確認＋位置情報取得
+    async function onCheckGeo() {
+      // Permissions API 対応チェック
+      if (!("permissions" in navigator)) {
+        out("このブラウザは Permissions API に対応していません。直接 Geolocation API を試します。");
+        getCurrentPositionWithGeolocationAPI();
+        return;
+      }
+
+      try {
+        const status = await navigator.permissions.query({ name: "geolocation" });
+
+        // state: "granted" | "denied" | "prompt"
+        out(
+          "Permissions API による geolocation の状態: " +
+          status.state +
+          "\n→ このあと実際に Geolocation API で位置情報取得を試みます。"
+        );
+
+        // 状態に関わらず、実際に取得を試してブラウザ/OSの挙動を確認
+        // （denied の場合は失敗コールバックが呼ばれる）
+        getCurrentPositionWithGeolocationAPI();
+
+      } catch (e) {
+        out("Permissions API エラー: " + e.message + "\nGeolocation API を直接試します。");
+        getCurrentPositionWithGeolocationAPI();
+      }
+    }
+
     function out(msg) {
       document.getElementById("out").textContent = msg;
     }
 
     async function main() {
       await liff.init({ liffId: LIFF_ID });
-      const ok = await ensureLogin(); if (!ok) return;
+      const ok = await ensureLogin();
+      if (!ok) return;
+
       out("ログイン完了。必要なときに権限を求めます。");
+
       document.getElementById("btnNeedProfile").onclick = onNeedProfile;
       document.getElementById("btnNeedChat").onclick = onNeedChat;
+
+      // ★ 追加: ボタンとハンドラの紐付け
+      document.getElementById("btnCheckGeo").onclick = onCheckGeo;
     }
+
     main().catch(e => out("初期化エラー: " + e.message));
   </script>
 </body>
